@@ -1,0 +1,201 @@
+BUILD REQUEST: Full-stack Lost & Found Web App for University (Production-ready skeleton + dummy DB + admin panel)
+
+GOAL
+Build a full-stack web application named **Campus Lost & Found** with the following:
+- React frontend (Vite or Create-React-App)
+- Node.js + Express backend
+- SQLite local database (dummy DB) with migrations/seeds
+- Authentication (JWT) and University-Email enforcement (env-controlled)
+- Admin panel for match verification
+- Matching engine that creates match_requests from lost & found items
+- Notification system (in-app notifications stored in DB; optional SendGrid when API key provided)
+- Clear template hooks & README showing how to replace dummy DB/auth with university systems (SSO/LDAP/API)
+- Provide seed data (1 admin user + 3 students + 3 lost items + 3 found items + 1 pending match)
+- Provide full file/folder structure, setup & run scripts, and commands to migrate/seeds
+
+PROJECT / TECHNICAL REQUIREMENTS
+1) Frontend
+- Tech: React + Vite (or Create React App), React Router, fetch/axios for API calls.
+- CSS: Tailwind CSS (minimal) or Bootstrap.
+- Pages:
+  - /login (email/password)
+  - /signup (email, name, university_id) — when university SSO unavailable this will set status pending
+  - /dashboard (shows My Lost / My Found / Notifications)
+  - /lost/new, /found/new (forms with upload)
+  - /lost/list, /found/list (filter by category/location/date)
+  - /lost/:id, /found/:id (details + Suggest Match button)
+  - /admin (Admin dashboard: pending matches, verify button, user mgmt)
+- Auth: store JWT in httpOnly cookie (preferable) or localStorage for simplicity (explain tradeoffs in README).
+- Admin UI: separate route /admin, toggle for admin-only actions.
+- Notifications UI: bell icon with dropdown listing `notifications` (from DB).
+
+2) Backend
+- Tech: Node.js, Express, Knex (or Sequelize) with SQLite driver.
+- Structure: /api routes with clear controllers.
+- Endpoints (examples):
+  - Auth: POST /api/auth/signup, POST /api/auth/login, GET /api/auth/me, POST /api/auth/logout
+  - Lost: POST /api/lost, GET /api/lost, GET /api/lost/:id, DELETE /api/lost/:id
+  - Found: POST /api/found, GET /api/found, GET /api/found/:id, DELETE /api/found/:id
+  - Matches: GET /api/matches/pending (admin), POST /api/matches/generate (internal), POST /api/matches/:id/verify (admin)
+  - Notifications: GET /api/notifications, POST /api/notifications/mark-read
+  - Admin: GET /api/admin/users, POST /api/admin/users/:id/verify
+- Matching Engine:
+  - Run whenever a lost/found item is created (triggered in controller).
+  - Scoring: category match (40), location exact (20), date proximity (15), keyword overlap up to (20), images present +5.
+  - When score ≥ 60 → create a `match_requests` record `{ lost_id, found_id, score, status: "pending" }` and create notifications for both users + admin.
+- Notifications:
+  - Store notification rows in Notifications table.
+  - Cloud/email optional: provide hook using SendGrid if SENDGRID_API_KEY present: call SendGrid from backend on approved match.
+
+3) Database (SQLite) — Schema (provide migrations and seeds)
+- users:
+  - id (PK)
+  - name
+  - email
+  - university_id
+  - password_hash
+  - role ('student' | 'admin')
+  - verified (boolean) — if admin verifies the user or email domain matches
+  - created_at
+- lost_items:
+  - id, user_id (FK), title, category, description, location, image_path, date_lost, status ('pending'|'matched'|'returned'|'closed'), created_at
+- found_items:
+  - id, user_id, title, category, description, location, image_path, date_found, status, created_at
+- match_requests:
+  - id, lost_id, found_id, score (int), status ('pending'|'approved'|'rejected'), created_at
+- claims:
+  - id, match_id, claimant_id, proof_path, status ('awaiting_proof'|'verified'|'rejected')
+- notifications:
+  - id, user_id, title, body, link (optional), read (boolean), created_at
+
+4) Dummy Data (seed)
+- Admin user:
+  - email: admin@university.test
+  - password: Admin@123
+  - role: admin
+  - verified: true
+- Student users (3)
+  - e.g., ali@university.test (studentId: U2025-001)
+  - sara@university.test (studentId: U2025-002)
+  - bilal@university.test (studentId: U2025-003)
+- Lost items (3) and Found items (3) with overlapping categories/locations and image placeholders.
+- One match_request seeded with status "pending" for admin review.
+
+5) File & Folder Structure (exact)
+- / (repo root)
+  - /backend
+    - package.json
+    - knexfile.js (if using Knex)
+    - /migrations
+    - /seeds
+    - /src
+      - server.js (express entry)
+      - /controllers
+      - /models (db helpers)
+      - /routes
+      - /middleware (auth, adminCheck, errorHandler)
+      - /utils (matchingEngine.js, notifier.js)
+      - /config (env loader)
+  - /frontend
+    - package.json
+    - /src
+      - main.jsx / index.jsx
+      - App.jsx
+      - /pages (Login.jsx, Dashboard.jsx, Admin.jsx, LostList.jsx, LostDetail.jsx, FoundList.jsx)
+      - /components (NavBar.jsx, ItemCard.jsx, NotificationBell.jsx, FileUpload.jsx)
+      - /api (client wrappers)
+      - /styles (tailwind.css)
+  - /scripts
+    - seed.sh (run migrations + seeds)
+  - README.md (full run instructions)
+  - .env.example
+
+6) Setup & Run (exact commands for README)
+- Prereqs: Node LTS, npm/yarn
+- Backend:
+  - cd backend
+  - cp .env.example .env (explain env vars below)
+  - npm install
+  - npx knex migrate:latest
+  - npx knex seed:run
+  - npm run dev (or node src/server.js)
+- Frontend:
+  - cd frontend
+  - npm install
+  - npm run dev (Vite) or npm start (CRA)
+- Default ports: backend 4000, frontend 3000
+- Provide a docker-compose optional config to run both in containers (optional).
+
+7) Environment variables (.env.example)
+- DATABASE_URL=sqlite:./db/dev.sqlite
+- JWT_SECRET=change_this_to_a_strong_secret
+- PORT=4000
+- UNIVERSITY_EMAIL_DOMAIN=university.test (used to auto-verify users if email matches)
+- SENDGRID_API_KEY= (optional)
+- FRONTEND_URL=http://localhost:3000
+
+8) Security & Rules
+- Password hashing using bcrypt.
+- JWT with expiry (e.g., 7 days).
+- Admin endpoints protected with adminCheck middleware reading user.role.
+- File uploads: store in /uploads folder (local) and serve statically—note in README how to replace with cloud storage (Firebase Storage / S3).
+- CSRF / XSS notes included in README.
+
+9) Admin Panel Template & Dummy Admin DB
+- Admin login uses same auth.
+- Admin dashboard shows:
+  - Summary metrics: counts of lost/found/pending matches
+  - Table of pending match_requests with View Pair details (images/descriptions)
+  - Approve / Reject buttons; upon approve, backend sets match_requests.status='approved' and creates notifications and claim record
+  - User verify page to approve new user registrations (pending)
+- Provide UI components and a simple design using Tailwind (cards, tables, modals).
+- Provide mocked university-admin API connector module `universityConnector.js` with functions:
+  - `async function verifyStudentWithUniversityApi(university_id)` — currently returns true/false using dummy lookup; include comment with steps to replace with real University API / LDAP / SSO (URL, auth, mapping).
+  - `async function syncAdminList()` — placeholder to fetch admin accounts if university central auth available.
+
+10) Integration Guide: How to replace dummy DB & admin
+- Clear step-by-step in README:
+  1. Replace SQLite with University DB: Provide SQL schema mapping (users table mapping), set DATABASE_URL to Postgres/SQL Server string.
+  2. Replace auth: If University has SSO/LDAP:
+     - Option A: Use OAuth/OpenID Connect — add route /api/auth/callback to accept tokens and exchange for app JWT; set UNIVERSITY_AUTH_ENABLED=true.
+     - Option B: Use LDAP — backend LDAP verification module example and mapping code snippet.
+  3. Map admin roles: University admin IDs/emails to `role: admin` in users table; provide migration script to import admin list CSV into users table with admin flag.
+  4. Explain how to disable local signup when University SSO is active.
+  5. Show how to enable SendGrid or university SMTP for emails.
+- Provide example code snips for each step.
+
+11) Tests & Validation
+- Provide basic test cases or manual QA checklist:
+  - Signup using university domain => auto verified
+  - Non-university email => pending verification
+  - Create Lost item -> auto-match found item -> creates match_request
+  - Admin approves match -> notifications created & claim flow triggered
+  - Claim proof upload & verify flow
+
+12) Deliverable expectations
+- The generator should output:
+  - A runnable repo with frontend & backend
+  - Migrations & seeds that create dummy DB and admin user
+  - README with all commands, envs, and integration guide
+  - Example Postman collection or curl commands for main endpoints
+
+USER NOTES / SPECIAL INSTRUCTIONS FOR THE AI BUILDER
+- Keep the UI minimal but clean; prioritize functionality over style.
+- Write code in plain, well-commented JavaScript (no TypeScript required unless asked).
+- For image uploads, implement local storage by default and add TODO comments showing how to switch to S3/Firebase.
+- Ensure the matchingEngine is in a single util file and is well-documented so it can be extended with image similarity later.
+- Provide clear error messages in API responses (400/401/403/500).
+- Seed admin credentials: admin@university.test / Admin@123 (store hashed in DB). Include that in README and suggest to change before demo.
+- Add helpful console logs for dev mode.
+
+OUTPUT FORMAT
+- Create a Git repo structure described above.
+- Include a straight-to-the-point README with:
+  - Setup steps
+  - How to run migrations & seed
+  - Default admin credentials
+  - How to test a match (manual steps)
+  - How to replace local DB/auth with university system
+
+END: Build the full project exactly as specified. When complete, produce a downloadable ZIP link or Git repo URL and a short checklist showing the app works with seeded data.
+
