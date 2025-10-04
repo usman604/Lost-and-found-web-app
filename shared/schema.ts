@@ -78,6 +78,7 @@ export const notifications = pgTable("notifications", {
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   created_at: true,
+  password_hash: true,
 }).extend({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
